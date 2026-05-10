@@ -81,6 +81,40 @@ def test_create_booking_invalid_dates(client):
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
+def test_create_booking_past_dates(client):
+    room_resp = client.post("/rooms", json=VALID_ROOM)
+    room_id = room_resp.json()["id"]
+
+    today = date.today()
+    payload = _booking_payload(
+        room_id,
+        check_in=(today - timedelta(days=5)).isoformat(),
+        check_out=(today - timedelta(days=1)).isoformat(),
+    )
+    response = client.post("/bookings", json=payload)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert "check_in must not be in the past" in response.json()["detail"]
+
+
+def test_create_booking_exceeds_capacity(client):
+    room_resp = client.post("/rooms", json=VALID_ROOM)
+    room_id = room_resp.json()["id"]
+
+    payload = _booking_payload(room_id, guests_count=5)
+    response = client.post("/bookings", json=payload)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert "exceeds room capacity" in response.json()["detail"]
+
+
+def test_create_booking_invalid_email(client):
+    room_resp = client.post("/rooms", json=VALID_ROOM)
+    room_id = room_resp.json()["id"]
+
+    payload = _booking_payload(room_id, guest_email="not-an-email")
+    response = client.post("/bookings", json=payload)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
 def test_create_booking_room_unavailable(client):
     room_resp = client.post("/rooms", json=VALID_ROOM)
     room_id = room_resp.json()["id"]
@@ -184,12 +218,12 @@ def test_update_booking(client):
     create_resp = client.post("/bookings", json=payload)
     booking_id = create_resp.json()["id"]
 
-    update_data = {"guest_name": "Updated Name", "guests_count": 3}
+    update_data = {"guest_name": "Updated Name", "guests_count": 1}
     response = client.put(f"/bookings/{booking_id}", json=update_data)
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["guest_name"] == "Updated Name"
-    assert data["guests_count"] == 3
+    assert data["guests_count"] == 1
     assert data["guest_email"] == payload["guest_email"]
 
 
@@ -272,6 +306,47 @@ def test_update_booking_invalid_dates(client):
     response = client.put(f"/bookings/{booking_id}", json=update_data)
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "check_out must be after check_in" in response.json()["detail"]
+
+
+def test_update_booking_past_dates(client):
+    room_resp = client.post("/rooms", json=VALID_ROOM)
+    room_id = room_resp.json()["id"]
+
+    today = date.today()
+    payload = _booking_payload(
+        room_id,
+        check_in=(today + timedelta(days=1)).isoformat(),
+        check_out=(today + timedelta(days=5)).isoformat(),
+    )
+    create_resp = client.post("/bookings", json=payload)
+    booking_id = create_resp.json()["id"]
+
+    update_data = {
+        "check_in": (today - timedelta(days=5)).isoformat(),
+        "check_out": (today - timedelta(days=1)).isoformat(),
+    }
+    response = client.put(f"/bookings/{booking_id}", json=update_data)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert "check_in must not be in the past" in response.json()["detail"]
+
+
+def test_update_booking_exceeds_capacity(client):
+    room_resp = client.post("/rooms", json=VALID_ROOM)
+    room_id = room_resp.json()["id"]
+
+    today = date.today()
+    payload = _booking_payload(
+        room_id,
+        check_in=(today + timedelta(days=1)).isoformat(),
+        check_out=(today + timedelta(days=5)).isoformat(),
+    )
+    create_resp = client.post("/bookings", json=payload)
+    booking_id = create_resp.json()["id"]
+
+    update_data = {"guests_count": 5}
+    response = client.put(f"/bookings/{booking_id}", json=update_data)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert "exceeds room capacity" in response.json()["detail"]
 
 
 def test_update_booking_no_body(client):

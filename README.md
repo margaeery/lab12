@@ -513,6 +513,20 @@ curl -X POST "http://localhost:8000/bookings" \
 }
 ```
 
+**Ошибка (422 Unprocessable Entity) — превышение вместимости:**
+```json
+{
+  "detail": "Guests count (5) exceeds room capacity (2)"
+}
+```
+
+**Ошибка (422 Unprocessable Entity) — дата заезда в прошлом:**
+```json
+{
+  "detail": "check_in must not be in the past"
+}
+```
+
 ---
 
 ### 8. Получить бронирование по ID
@@ -584,8 +598,8 @@ PUT /bookings/{booking_id}
 
 | Поле | Тип | Ограничения |
 |------|-----|-------------|
-| `guest_name` | `string` | `min_length=1` |
-| `guest_email` | `string` | `min_length=1` |
+| `guest_name` | `string` | `min_length=1`, `max_length=100` |
+| `guest_email` | `string` | валидный email (`EmailStr`) |
 | `guests_count` | `integer` | `> 0` |
 | `check_in` | `string (date)` | ISO 8601 |
 | `check_out` | `string (date)` | ISO 8601, после `check_in` |
@@ -602,7 +616,7 @@ curl -X PUT "http://localhost:8000/bookings/1" \
   -H "accept: application/json" \
   -d '{
     "guest_name": "Иван Петров",
-    "guests_count": 3,
+    "guests_count": 2,
     "status": "confirmed"
   }'
 ```
@@ -754,6 +768,22 @@ total = calculate_total_cost(
 - Валидация: проверка на положительность параметров
 - Удалён `print`, функция возвращает `round(total, 2)`
 - Type hints для всех параметров
+
+---
+
+## Меры безопасности (Security Audit)
+
+В ходе аудита внесены следующие улучшения:
+
+| Улучшение | Описание |
+|-----------|----------|
+| Валидация email | `guest_email` — `EmailStr`, строгая проверка формата |
+| Ограничение длины | `room_number` ≤ 20, `guest_name` ≤ 100 символов |
+| Положительные числа | `floor` > 0, `price_per_night` > 0, `capacity` > 0 |
+| Проверка вместимости | `guests_count` не может превышать `room.capacity` |
+| Запрет прошедших дат | `check_in` должен быть ≥ сегодняшней даты |
+| CORS | Разрешены только `localhost:3000` и `127.0.0.1:3000` |
+| Убран `print()` | Из `bad_calculator.py` удалён побочный эффект вывода в stdout |
 
 ---
 

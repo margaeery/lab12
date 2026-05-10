@@ -1,16 +1,16 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 from app.enums import RoomType, BookingStatus
 from room_cost_calculator.calculator import Season, ExtraService
 
 
 class RoomBase(BaseModel):
-    room_number: str = Field(..., min_length=1)
+    room_number: str = Field(..., min_length=1, max_length=20)
     room_type: RoomType
     price_per_night: float = Field(..., gt=0)
-    floor: int
+    floor: int = Field(..., gt=0)
     capacity: int = Field(..., gt=0)
 
 
@@ -19,10 +19,10 @@ class RoomCreate(RoomBase):
 
 
 class RoomUpdate(BaseModel):
-    room_number: str | None = Field(None, min_length=1)
+    room_number: str | None = Field(None, min_length=1, max_length=20)
     room_type: RoomType | None = None
     price_per_night: float | None = Field(None, gt=0)
-    floor: int | None = None
+    floor: int | None = Field(None, gt=0)
     capacity: int | None = Field(None, gt=0)
 
 
@@ -34,8 +34,8 @@ class RoomResponse(RoomBase):
 
 class BookingBase(BaseModel):
     room_id: int = Field(..., gt=0)
-    guest_name: str = Field(..., min_length=1)
-    guest_email: str = Field(..., min_length=1)
+    guest_name: str = Field(..., min_length=1, max_length=100)
+    guest_email: EmailStr
     guests_count: int = Field(..., gt=0)
     check_in: date
     check_out: date
@@ -48,8 +48,8 @@ class BookingCreate(BookingBase):
 
 
 class BookingUpdate(BaseModel):
-    guest_name: str | None = Field(None, min_length=1)
-    guest_email: str | None = Field(None, min_length=1)
+    guest_name: str | None = Field(None, min_length=1, max_length=100)
+    guest_email: EmailStr | None = None
     guests_count: int | None = Field(None, gt=0)
     check_in: date | None = None
     check_out: date | None = None

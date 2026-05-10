@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -12,6 +13,16 @@ from app.schemas import (
 )
 from room_cost_calculator.calculator import calculate_total_cost
 
+app = FastAPI(title="Hotel Room API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
+
 
 def _check_room_availability(
     db: Session,
@@ -20,12 +31,7 @@ def _check_room_availability(
     check_out: date,
     exclude_booking_id: int | None = None,
 ) -> bool:
-    """Проверяет, что комната свободна на указанный период.
 
-    Брони со статусом 'cancelled' не учитываются.
-    Пересечение: существующая бронь пересекается с новым периодом, если:
-        new_check_in < existing_check_out AND new_check_out > existing_check_in
-    """
     query = db.query(Booking).filter(
         Booking.room_id == room_id,
         Booking.status != BookingStatus.CANCELLED,
@@ -35,8 +41,6 @@ def _check_room_availability(
     if exclude_booking_id is not None:
         query = query.filter(Booking.id != exclude_booking_id)
     return query.first() is None
-
-app = FastAPI(title="Hotel Room API")
 
 
 @app.get("/rooms", response_model=list[RoomResponse], status_code=status.HTTP_200_OK)
@@ -159,11 +163,24 @@ def create_booking(data: BookingCreate, db: Session = Depends(get_db)) -> Bookin
             detail="Room not found",
         )
 
+    if data.guests_count > room.capacity:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Guests count ({data.guests_count}) exceeds room capacity ({room.capacity})",
+        )
+
     nights = (data.check_out - data.check_in).days
     if nights <= 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="check_out must be after check_in",
+        )
+
+    today = date.today()
+    if data.check_in < today:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="check_in must not be in the past",
         )
 
     total_price = calculate_total_cost(
@@ -262,6 +279,20 @@ def update_booking(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="check_out must be after check_in",
             )
+
+        today = date.today()
+        if booking.check_in < today:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="check_in must not be in the past",
+            )
+
+        if booking.guests_count > room.capacity:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Guests count ({booking.guests_count}) exceeds room capacity ({room.capacity})",
+            )
+
         if not _check_room_availability(
             db, booking.room_id, booking.check_in, booking.check_out, exclude_booking_id=booking.id
         ):
