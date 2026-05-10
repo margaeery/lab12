@@ -1,17 +1,17 @@
 import enum
 
 
-class Season(enum.Enum):
-    PEAK = 1
-    SHOULDER = 2
-    OFF_SEASON = 3
-    NORMAL = 4
+class Season(str, enum.Enum):
+    PEAK = "peak"
+    SHOULDER = "shoulder"
+    OFF_SEASON = "off_season"
+    NORMAL = "normal"
 
 
-class ExtraService(enum.Enum):
-    BREAKFAST = 1
-    PARKING = 2
-    SPA = 3
+class ExtraService(str, enum.Enum):
+    BREAKFAST = "breakfast"
+    PARKING = "parking"
+    SPA = "spa"
 
 
 SEASON_MULTIPLIERS = {

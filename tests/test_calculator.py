@@ -8,32 +8,33 @@ class TestBehaviorMatch:
     @pytest.mark.parametrize(
         "price,nights,guests,season,extra",
         [
-            (1000, 1, 1, 4, 0),
-            (1000, 3, 1, 1, 0),
-            (1000, 3, 1, 3, 0),
-            (1000, 3, 4, 4, 0),
-            (1000, 3, 7, 4, 0),
-            (1000, 8, 1, 4, 0),
-            (1000, 15, 1, 4, 0),
-            (1000, 31, 1, 4, 0),
-            (500, 3, 1, 4, 0),
-            (1500, 3, 1, 4, 0),
-            (3500, 3, 1, 4, 0),
-            (1000, 7, 1, 4, 0),
-            (1000, 5, 1, 4, 0),
-            (1000, 3, 1, 4, 0),
-            (1000, 1, 1, 4, 1),
-            (1000, 1, 1, 4, 2),
-            (1000, 1, 1, 4, 3),
-            (1000, 8, 4, 2, 1),
-            (2000, 15, 6, 1, 2),
+            (1000, 1, 1, Season.NORMAL, None),
+            (1000, 3, 1, Season.PEAK, None),
+            (1000, 3, 1, Season.OFF_SEASON, None),
+            (1000, 3, 4, Season.NORMAL, None),
+            (1000, 3, 7, Season.NORMAL, None),
+            (1000, 8, 1, Season.NORMAL, None),
+            (1000, 15, 1, Season.NORMAL, None),
+            (1000, 31, 1, Season.NORMAL, None),
+            (500, 3, 1, Season.NORMAL, None),
+            (1500, 3, 1, Season.NORMAL, None),
+            (3500, 3, 1, Season.NORMAL, None),
+            (1000, 7, 1, Season.NORMAL, None),
+            (1000, 5, 1, Season.NORMAL, None),
+            (1000, 3, 1, Season.NORMAL, None),
+            (1000, 1, 1, Season.NORMAL, ExtraService.BREAKFAST),
+            (1000, 1, 1, Season.NORMAL, ExtraService.PARKING),
+            (1000, 1, 1, Season.NORMAL, ExtraService.SPA),
+            (1000, 8, 4, Season.SHOULDER, ExtraService.BREAKFAST),
+            (2000, 15, 6, Season.PEAK, ExtraService.PARKING),
         ],
     )
     def test_same_result(self, price, nights, guests, season, extra):
-        bad = f(price, nights, guests, season, extra)
-        season_enum = Season(season)
-        extra_enum = ExtraService(extra) if extra else None
-        good = calculate_total_cost(price, nights, guests, season_enum, extra_enum)
+        # bad_calculator ожидает старые числовые значения
+        season_num = {"peak": 1, "shoulder": 2, "off_season": 3, "normal": 4}.get(season.value, 4)
+        extra_num = {"breakfast": 1, "parking": 2, "spa": 3}.get(extra.value if extra else None, 0)
+        bad = f(price, nights, guests, season_num, extra_num)
+        good = calculate_total_cost(price, nights, guests, season, extra)
         assert bad == pytest.approx(good, abs=0.01)
 
 
