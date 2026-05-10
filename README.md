@@ -6,7 +6,7 @@
 
 ## Описание проекта
 
-REST API для управления номерами гостиницы, построенное на **FastAPI** с использованием **SQLAlchemy** и **PostgreSQL**. Реализованы CRUD-операции для номеров, валидация данных, миграции через Alembic.
+REST API для управления номерами и бронированиями гостиницы, построенное на **FastAPI** с использованием **SQLAlchemy** и **PostgreSQL**. Реализованы CRUD-операции для номеров и броней, валидация данных, автоматический расчёт стоимости проживания, проверка доступности номеров на выбранные даты и миграции через Alembic.
 
 Кроме API, проект включает модуль `room_cost_calculator` — калькулятор итоговой стоимости номера с учётом сезонных коэффициентов, количества гостей, дополнительных услуг и скидок за длительность.
 
@@ -129,6 +129,8 @@ pytest --cov=app --cov=room_cost_calculator --cov-report=term-missing
 - Базовый URL: `http://localhost:8000`
 - Формат данных: JSON
 - Документация: `/docs` (Swagger UI)
+
+---
 
 ### Модель данных Room
 
@@ -373,6 +375,309 @@ curl -X DELETE "http://localhost:8000/rooms/1"
 
 ---
 
+### Модель данных Booking
+
+| Поле | Тип | Описание | Ограничения |
+|------|-----|----------|-------------|
+| `id` | `integer` | Уникальный идентификатор брони | автоинкремент |
+| `room_id` | `integer` | ID номера | `> 0`, обязательный |
+| `guest_name` | `string` | Имя гостя | `min_length=1`, обязательный |
+| `guest_email` | `string` | Email гостя | `min_length=1`, обязательный |
+| `guests_count` | `integer` | Количество гостей | `> 0` |
+| `check_in` | `date` | Дата заезда (ISO 8601) | обязательный |
+| `check_out` | `date` | Дата выезда (ISO 8601) | обязательный, должен быть после заезда |
+| `season` | `enum` | Сезон | `peak`, `shoulder`, `off_season`, `normal` |
+| `extra_service` | `enum \| null` | Доп. услуга | `breakfast`, `parking`, `spa` |
+| `total_price` | `float` | Итоговая стоимость | рассчитывается автоматически |
+| `status` | `enum` | Статус брони | `pending`, `confirmed`, `cancelled` |
+| `created_at` | `datetime` | Дата создания брони | UTC |
+| `room` | `RoomResponse \| null` | Данные о номере | возвращается при детальном запросе |
+
+---
+
+### 6. Получить все бронирования
+
+```http
+GET /bookings
+```
+
+**Пример запроса:**
+```bash
+curl -X GET "http://localhost:8000/bookings" \
+  -H "accept: application/json"
+```
+
+**Пример ответа (200 OK):**
+```json
+[
+  {
+    "id": 1,
+    "room_id": 1,
+    "guest_name": "Иван Иванов",
+    "guest_email": "ivan@example.com",
+    "guests_count": 2,
+    "check_in": "2025-07-01",
+    "check_out": "2025-07-05",
+    "season": "peak",
+    "extra_service": "breakfast",
+    "total_price": 15750.0,
+    "status": "pending",
+    "created_at": "2025-06-15T10:30:00",
+    "room": {
+      "id": 1,
+      "room_number": "101",
+      "room_type": "standard",
+      "price_per_night": 2500.0,
+      "floor": 1,
+      "capacity": 2
+    }
+  }
+]
+```
+
+---
+
+### 7. Создать бронирование
+
+```http
+POST /bookings
+```
+
+**Тело запроса (BookingCreate):**
+
+| Поле | Тип | Обязательное | Ограничения |
+|------|-----|-------------|-------------|
+| `room_id` | `integer` | да | `> 0` |
+| `guest_name` | `string` | да | `min_length=1` |
+| `guest_email` | `string` | да | `min_length=1` |
+| `guests_count` | `integer` | да | `> 0` |
+| `check_in` | `string (date)` | да | ISO 8601 |
+| `check_out` | `string (date)` | да | ISO 8601, после `check_in` |
+| `season` | `enum` | да | `peak`, `shoulder`, `off_season`, `normal` |
+| `extra_service` | `enum \| null` | нет | `breakfast`, `parking`, `spa` |
+
+**Пример запроса:**
+```bash
+curl -X POST "http://localhost:8000/bookings" \
+  -H "Content-Type: application/json" \
+  -H "accept: application/json" \
+  -d '{
+    "room_id": 1,
+    "guest_name": "Иван Иванов",
+    "guest_email": "ivan@example.com",
+    "guests_count": 2,
+    "check_in": "2025-07-01",
+    "check_out": "2025-07-05",
+    "season": "peak",
+    "extra_service": "breakfast"
+  }'
+```
+
+**Пример ответа (201 Created):**
+```json
+{
+  "id": 1,
+  "room_id": 1,
+  "guest_name": "Иван Иванов",
+  "guest_email": "ivan@example.com",
+  "guests_count": 2,
+  "check_in": "2025-07-01",
+  "check_out": "2025-07-05",
+  "season": "peak",
+  "extra_service": "breakfast",
+  "total_price": 15750.0,
+  "status": "pending",
+  "created_at": "2025-06-15T10:30:00",
+  "room": null
+}
+```
+
+**Ошибка (404 Not Found) — номер не найден:**
+```json
+{
+  "detail": "Room not found"
+}
+```
+
+**Ошибка (409 Conflict) — номер занят на выбранные даты:**
+```json
+{
+  "detail": "Room is not available for the selected dates"
+}
+```
+
+**Ошибка (422 Unprocessable Entity) — невалидные даты:**
+```json
+{
+  "detail": "check_out must be after check_in"
+}
+```
+
+---
+
+### 8. Получить бронирование по ID
+
+```http
+GET /bookings/{booking_id}
+```
+
+**Параметры пути:**
+
+| Параметр | Тип | Описание |
+|----------|-----|----------|
+| `booking_id` | `integer` | ID брони |
+
+**Пример запроса:**
+```bash
+curl -X GET "http://localhost:8000/bookings/1" \
+  -H "accept: application/json"
+```
+
+**Пример ответа (200 OK):**
+```json
+{
+  "id": 1,
+  "room_id": 1,
+  "guest_name": "Иван Иванов",
+  "guest_email": "ivan@example.com",
+  "guests_count": 2,
+  "check_in": "2025-07-01",
+  "check_out": "2025-07-05",
+  "season": "peak",
+  "extra_service": "breakfast",
+  "total_price": 15750.0,
+  "status": "pending",
+  "created_at": "2025-06-15T10:30:00",
+  "room": {
+    "id": 1,
+    "room_number": "101",
+    "room_type": "standard",
+    "price_per_night": 2500.0,
+    "floor": 1,
+    "capacity": 2
+  }
+}
+```
+
+**Ошибка (404 Not Found):**
+```json
+{
+  "detail": "Booking not found"
+}
+```
+
+---
+
+### 9. Обновить бронирование
+
+```http
+PUT /bookings/{booking_id}
+```
+
+**Параметры пути:**
+
+| Параметр | Тип | Описание |
+|----------|-----|----------|
+| `booking_id` | `integer` | ID брони |
+
+**Тело запроса (BookingUpdate) — все поля опциональные:**
+
+| Поле | Тип | Ограничения |
+|------|-----|-------------|
+| `guest_name` | `string` | `min_length=1` |
+| `guest_email` | `string` | `min_length=1` |
+| `guests_count` | `integer` | `> 0` |
+| `check_in` | `string (date)` | ISO 8601 |
+| `check_out` | `string (date)` | ISO 8601, после `check_in` |
+| `season` | `enum` | `peak`, `shoulder`, `off_season`, `normal` |
+| `status` | `enum` | `pending`, `confirmed`, `cancelled` |
+| `extra_service` | `enum \| null` | `breakfast`, `parking`, `spa` |
+
+При изменении дат, количества гостей, сезона, доп. услуг или номера стоимость пересчитывается автоматически, а доступность номера проверяется заново (с учётом текущей брони).
+
+**Пример запроса:**
+```bash
+curl -X PUT "http://localhost:8000/bookings/1" \
+  -H "Content-Type: application/json" \
+  -H "accept: application/json" \
+  -d '{
+    "guest_name": "Иван Петров",
+    "guests_count": 3,
+    "status": "confirmed"
+  }'
+```
+
+**Пример ответа (200 OK):**
+```json
+{
+  "id": 1,
+  "room_id": 1,
+  "guest_name": "Иван Петров",
+  "guest_email": "ivan@example.com",
+  "guests_count": 3,
+  "check_in": "2025-07-01",
+  "check_out": "2025-07-05",
+  "season": "peak",
+  "extra_service": "breakfast",
+  "total_price": 16500.0,
+  "status": "confirmed",
+  "created_at": "2025-06-15T10:30:00",
+  "room": null
+}
+```
+
+**Ошибка (404 Not Found):**
+```json
+{
+  "detail": "Booking not found"
+}
+```
+
+**Ошибка (409 Conflict) — номер занят на новые даты:**
+```json
+{
+  "detail": "Room is not available for the selected dates"
+}
+```
+
+**Ошибка (422 Unprocessable Entity):**
+```json
+{
+  "detail": "check_out must be after check_in"
+}
+```
+
+---
+
+### 10. Удалить бронирование
+
+```http
+DELETE /bookings/{booking_id}
+```
+
+**Параметры пути:**
+
+| Параметр | Тип | Описание |
+|----------|-----|----------|
+| `booking_id` | `integer` | ID брони |
+
+**Пример запроса:**
+```bash
+curl -X DELETE "http://localhost:8000/bookings/1"
+```
+
+**Ответ:**
+- `204 No Content` — успешное удаление (тело пустое)
+
+**Ошибка (404 Not Found):**
+```json
+{
+  "detail": "Booking not found"
+}
+```
+
+---
+
 ### Сводная таблица эндпоинтов
 
 | Метод | Эндпоинт | Описание | Коды ответа |
@@ -382,6 +687,11 @@ curl -X DELETE "http://localhost:8000/rooms/1"
 | `GET` | `/rooms/{id}` | Получить номер по ID | 200, 404 |
 | `PUT` | `/rooms/{id}` | Обновить номер | 200, 404, 409, 422 |
 | `DELETE` | `/rooms/{id}` | Удалить номер | 204, 404 |
+| `GET` | `/bookings` | Получить все бронирования | 200 |
+| `POST` | `/bookings` | Создать бронирование | 201, 404, 409, 422 |
+| `GET` | `/bookings/{id}` | Получить бронирование по ID | 200, 404 |
+| `PUT` | `/bookings/{id}` | Обновить бронирование | 200, 404, 409, 422 |
+| `DELETE` | `/bookings/{id}` | Удалить бронирование | 204, 404 |
 
 ---
 
@@ -411,7 +721,7 @@ total = calculate_total_cost(
 | `nights` | `int` | Количество ночей |
 | `guests` | `int` | Количество гостей |
 | `season` | `Season` | Сезон: `PEAK`, `SHOULDER`, `OFF_SEASON`, `NORMAL` |
-| `extra_service` | `ExtraService | None` | Доп. услуга: `BREAKFAST`, `PARKING`, `SPA` |
+| `extra_service` | `ExtraService \| None` | Доп. услуга: `BREAKFAST`, `PARKING`, `SPA` |
 
 ### Сезонные коэффициенты
 
@@ -421,6 +731,8 @@ total = calculate_total_cost(
 | `SHOULDER` | 1.2 | 5% |
 | `OFF_SEASON` | 0.8 | 0% |
 | `NORMAL` | 1.0 | 0% |
+
+---
 
 ## Рефакторинг калькулятора
 
@@ -442,6 +754,7 @@ total = calculate_total_cost(
 - Валидация: проверка на положительность параметров
 - Удалён `print`, функция возвращает `round(total, 2)`
 - Type hints для всех параметров
+
 ---
 
 ## Структура проекта
@@ -451,9 +764,9 @@ lab12/
 ├── app/
 │   ├── __init__.py
 │   ├── database.py          # Подключение к БД
-│   ├── enums.py             # Перечисления (RoomType)
-│   ├── main.py              # FastAPI приложение
-│   ├── models.py            # SQLAlchemy модели
+│   ├── enums.py             # Перечисления (RoomType, BookingStatus)
+│   ├── main.py              # FastAPI приложение и эндпоинты
+│   ├── models.py            # SQLAlchemy модели (Room, Booking)
 │   └── schemas.py           # Pydantic схемы
 ├── room_cost_calculator/
 │   ├── __init__.py
@@ -462,8 +775,9 @@ lab12/
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py          # Фикстуры pytest
+│   ├── test_booking.py      # Тесты API бронирований
 │   ├── test_calculator.py   # Тесты калькулятора
-│   └── test_main.py         # Тесты API
+│   └── test_main.py         # Тесты API номеров
 ├── alembic/                 # Миграции БД
 ├── .env.example             # Шаблон переменных окружения
 ├── docker-compose.yml       # Docker Compose
@@ -471,7 +785,6 @@ lab12/
 ├── entrypoint.sh            # Скрипт запуска
 ├── requirements.txt         # Зависимости Python
 ├── explanation.md           # Объяснение бизнес-логики
+├── PROMPT_LOG.md            # Лог промптов
 └── README.md                # Документация
 ```
-
----

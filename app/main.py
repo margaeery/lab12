@@ -1,10 +1,9 @@
-from contextlib import asynccontextmanager
 from datetime import date
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.database import get_db, engine, Base
+from app.database import get_db
 from app.enums import BookingStatus
 from app.models import Room, Booking
 from app.schemas import (
@@ -37,14 +36,7 @@ def _check_room_availability(
         query = query.filter(Booking.id != exclude_booking_id)
     return query.first() is None
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    yield
-
-
-app = FastAPI(title="Hotel Room API", lifespan=lifespan)
+app = FastAPI(title="Hotel Room API")
 
 
 @app.get("/rooms", response_model=list[RoomResponse], status_code=status.HTTP_200_OK)
