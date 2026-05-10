@@ -6,6 +6,10 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base, get_db
 from app.main import app
 
+
+def pytest_configure(config):
+    config.inicfg["asyncio_default_fixture_loop_scope"] = "function"
+
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 
 engine = create_engine(

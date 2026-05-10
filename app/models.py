@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, Integer, String, Float, Enum as SQLEnum, ForeignKey, Date, DateTime, Index
 from sqlalchemy.orm import relationship
@@ -54,7 +54,7 @@ class Booking(Base):
         default=BookingStatus.PENDING,
         index=True,
     )
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
     room = relationship("Room", back_populates="bookings")
 
