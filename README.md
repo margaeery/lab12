@@ -43,8 +43,12 @@ cp .env.example .env
 
 Отредактируйте файл `.env`:
 
-```
-DATABASE_URL=postgresql://hotel_user:hotel_pass@localhost:5432/hotel_db
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=hotel_user
+DB_PASSWORD=hotel_pass
+DB_NAME=hotel_db
 ```
 
 ### 4. Запуск тестов
@@ -130,7 +134,35 @@ curl -X PUT "http://127.0.0.1:8000/rooms/1" \
 curl -X DELETE "http://127.0.0.1:8000/rooms/1"
 ```
 
-### 6. Просмотр данных в базе
+### 6. Запуск через Docker
+
+Файл `.env` уже настроен для локального запуска. Для Docker `DB_HOST` переопределяется автоматически в `docker-compose.yml`.
+
+Запустите сервисы:
+
+```bash
+docker-compose up --build
+```
+
+- API: http://localhost:8000
+- Swagger UI: http://localhost:8000/docs
+- PostgreSQL: localhost:5432
+
+Миграции Alembic применяются автоматически перед стартом приложения.
+
+Остановка:
+
+```bash
+docker-compose down
+```
+
+С удалением данных:
+
+```bash
+docker-compose down -v
+```
+
+### 7. Просмотр данных в базе
 
 ```bash
 psql -U hotel_user -d hotel_db -h localhost

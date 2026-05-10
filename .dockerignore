@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+.git/
+.gitignore
+.pytest_cache/
+test.db
+PROMPT_LOG.md
+README.md
+room_cost_calculator/
+tests/

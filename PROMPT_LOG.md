@@ -61,11 +61,11 @@
 ## Задание 4: Генерация Docker-конфигурации
 ### Промпт 1
 **Инструмент:** koda-pro
-**Промпт:** "Создай Dockerfile, dockerignore и docker-compose.yml для FastAPI проекта. В docker-compose.yml два сервиса: app (FastAPI, порт 8000) и db (PostgreSQL 18, порт 5432). Используй переменные окружения: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME. Учти и настрой запуск миграций Alembic."
-**Результат:** 
-- Количество промптов: 
-- Что пришлось исправлять вручную: 
-- Время:
+**Промпт:** "Создай Dockerfile, dockerignore и docker-compose.yml для FastAPI проекта. В docker-compose.yml два сервиса: app (FastAPI, порт 8000) и db (PostgreSQL 18, порт 5432). Используй переменные окружения: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME. Настрой запуск миграций Alembic перед стартом приложения."
+**Результат:** Созданы Dockerfile, dockerignore и docker-compose.yml
+- Количество промптов: 1
+- Что пришлось исправлять вручную: ничего
+- Время: ~25 минут
 
 ## Задание 5: Объяснение сложного кода 
 ### Промпт 1
