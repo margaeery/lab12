@@ -628,8 +628,8 @@ curl -X PUT "http://localhost:8000/bookings/1" \
   "room_id": 1,
   "guest_name": "Иван Петров",
   "guest_email": "ivan@example.com",
-  "guests_count": 3,
-  "check_in": "2025-07-01",
+  "guests_count": 2,
+    "check_in": "2025-07-01",
   "check_out": "2025-07-05",
   "season": "peak",
   "extra_service": "breakfast",
@@ -787,6 +787,64 @@ total = calculate_total_cost(
 
 ---
 
+## Валидатор номера договора бронирования
+
+Модуль `contract_validator.py` проверяет формат номера договора.
+
+**Формат:** `XX-123456.YYYY`
+- 2 заглавные латинские буквы (серия)
+- дефис
+- ровно 6 цифр (номер)
+- точка
+- год от 2024 до 2035
+
+**Примеры:**
+
+| Значение | Результат |
+|----------|-----------|
+| `HB-123456.2025` | ✅ Валидно |
+| `hb-123456.2025` | ❌ Невалидно (строчные буквы) |
+| `HB-12345.2025` | ❌ Невалидно (5 цифр вместо 6) |
+| `HB-123456.2036` | ❌ Невалидно (год вне диапазона) |
+
+**Использование:**
+
+```python
+from contract_validator import is_valid_contract
+
+is_valid_contract('HB-123456.2025')  # True
+is_valid_contract('hb-123456.2025')  # False
+```
+
+---
+
+## Аналитический SQL-запрос
+
+Файл `SQLquery.md` содержит запрос для отчёта **«Топ-5 номеров по выручке за последние 30 дней»** среди подтверждённых бронирований.
+
+**Выходные поля:**
+- `room_number` — номер комнаты
+- `room_type` — тип номера
+- `total_revenue` — общая выручка
+- `booking_count` — количество бронирований
+
+```sql
+SELECT
+    r.room_number,
+    r.room_type,
+    SUM(b.total_price) AS total_revenue,
+    COUNT(*) AS booking_count
+FROM rooms r
+INNER JOIN bookings b ON r.id = b.room_id
+WHERE b.status = 'confirmed'
+  AND b.created_at >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY r.id, r.room_number, r.room_type
+ORDER BY total_revenue DESC
+LIMIT 5;
+```
+
+---
+
 ## Структура проекта
 
 ```
@@ -807,14 +865,18 @@ lab12/
 │   ├── conftest.py          # Фикстуры pytest
 │   ├── test_booking.py      # Тесты API бронирований
 │   ├── test_calculator.py   # Тесты калькулятора
+│   ├── test_contract_validator.py  # Тесты валидатора договора
 │   └── test_main.py         # Тесты API номеров
 ├── alembic/                 # Миграции БД
 ├── .env.example             # Шаблон переменных окружения
+├── contract_validator.py    # Валидатор номера договора
 ├── docker-compose.yml       # Docker Compose
 ├── Dockerfile               # Образ приложения
 ├── entrypoint.sh            # Скрипт запуска
-├── requirements.txt         # Зависимости Python
 ├── explanation.md           # Объяснение бизнес-логики
 ├── PROMPT_LOG.md            # Лог промптов
+├── requirements.txt         # Зависимости Python
+├── SQLquery.md              # Аналитический SQL-запрос
+├── vulnerabilities.md       # Отчёт security audit
 └── README.md                # Документация
 ```
