@@ -1,7 +1,11 @@
+from collections import defaultdict, deque
 from datetime import date
+from threading import Lock
+from time import monotonic
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -13,6 +17,13 @@ from app.schemas import (
 )
 from room_cost_calculator.calculator import calculate_total_cost
 
+
+RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_MAX_REQUESTS = 500
+
+request_log: dict[str, deque[float]] = defaultdict(deque)
+request_log_lock = Lock()
+
 app = FastAPI(title="Hotel Room API")
 
 app.add_middleware(
@@ -22,6 +33,30 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def apply_security_controls(request: Request, call_next):
+    client_host = request.client.host if request.client else "unknown"
+    now = monotonic()
+
+    with request_log_lock:
+        timestamps = request_log[client_host]
+        while timestamps and now - timestamps[0] > RATE_LIMIT_WINDOW_SECONDS:
+            timestamps.popleft()
+        if len(timestamps) >= RATE_LIMIT_MAX_REQUESTS:
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={"detail": "Too many requests"},
+            )
+        timestamps.append(now)
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _check_room_availability(

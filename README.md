@@ -101,7 +101,13 @@ cp .env.example .env
 
 Отредактируйте `.env` при необходимости.
 
-#### 4. Запуск приложения
+#### 4. Применение миграций
+
+```bash
+alembic upgrade head
+```
+
+#### 5. Запуск приложения
 
 ```bash
 uvicorn app.main:app --reload
@@ -783,7 +789,9 @@ total = calculate_total_cost(
 | Проверка вместимости | `guests_count` не может превышать `room.capacity` |
 | Запрет прошедших дат | `check_in` должен быть ≥ сегодняшней даты |
 | CORS | Разрешены только `localhost:3000` и `127.0.0.1:3000` |
-| Убран `print()` | Из `bad_calculator.py` удалён побочный эффект вывода в stdout |
+| Rate limiting | Базовое ограничение: до 500 запросов в минуту с одного IP |
+| Security headers | Добавлены `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cache-Control` |
+| Демонстрация плохого кода | `bad_calculator.py` сохранён как отдельный учебный пример и не используется API |
 
 ---
 
