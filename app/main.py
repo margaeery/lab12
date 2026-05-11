@@ -78,6 +78,46 @@ def _check_room_availability(
     return query.first() is None
 
 
+def _get_room(
+    db: Session,
+    room_id: int,
+    *,
+    lock: bool = False,
+) -> Room | None:
+    query = db.query(Room).filter(Room.id == room_id)
+    if lock and db.bind is not None and db.bind.dialect.name == "postgresql":
+        query = query.with_for_update()
+    return query.first()
+
+
+def _validate_booking_data(
+    room: Room,
+    guests_count: int,
+    check_in: date,
+    check_out: date,
+) -> int:
+    if guests_count > room.capacity:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Guests count ({guests_count}) exceeds room capacity ({room.capacity})",
+        )
+
+    nights = (check_out - check_in).days
+    if nights <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="check_out must be after check_in",
+        )
+
+    if check_in < date.today():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="check_in must not be in the past",
+        )
+
+    return nights
+
+
 @app.get("/rooms", response_model=list[RoomResponse], status_code=status.HTTP_200_OK)
 def list_rooms(db: Session = Depends(get_db)) -> list[Room]:
     return db.query(Room).all()
@@ -191,31 +231,24 @@ def list_bookings(db: Session = Depends(get_db)) -> list[Booking]:
     },
 )
 def create_booking(data: BookingCreate, db: Session = Depends(get_db)) -> Booking:
-    room = db.query(Room).filter(Room.id == data.room_id).first()
+    room = _get_room(db, data.room_id, lock=True)
     if not room:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Room not found",
         )
 
-    if data.guests_count > room.capacity:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Guests count ({data.guests_count}) exceeds room capacity ({room.capacity})",
-        )
+    nights = _validate_booking_data(
+        room,
+        data.guests_count,
+        data.check_in,
+        data.check_out,
+    )
 
-    nights = (data.check_out - data.check_in).days
-    if nights <= 0:
+    if not _check_room_availability(db, data.room_id, data.check_in, data.check_out):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="check_out must be after check_in",
-        )
-
-    today = date.today()
-    if data.check_in < today:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="check_in must not be in the past",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Room is not available for the selected dates",
         )
 
     total_price = calculate_total_cost(
@@ -225,12 +258,6 @@ def create_booking(data: BookingCreate, db: Session = Depends(get_db)) -> Bookin
         season=data.season,
         extra_service=data.extra_service,
     )
-
-    if not _check_room_availability(db, data.room_id, data.check_in, data.check_out):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Room is not available for the selected dates",
-        )
 
     booking = Booking(
         room_id=data.room_id,
@@ -293,7 +320,7 @@ def update_booking(
     update_data = data.model_dump(exclude_unset=True)
 
     if "room_id" in update_data:
-        room = db.query(Room).filter(Room.id == update_data["room_id"]).first()
+        room = _get_room(db, update_data["room_id"], lock=True)
         if not room:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -307,26 +334,13 @@ def update_booking(
         field in update_data
         for field in ("room_id", "check_in", "check_out", "guests_count", "season", "extra_service")
     ):
-        room = db.query(Room).filter(Room.id == booking.room_id).first()
-        nights = (booking.check_out - booking.check_in).days
-        if nights <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="check_out must be after check_in",
-            )
-
-        today = date.today()
-        if booking.check_in < today:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="check_in must not be in the past",
-            )
-
-        if booking.guests_count > room.capacity:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Guests count ({booking.guests_count}) exceeds room capacity ({room.capacity})",
-            )
+        room = _get_room(db, booking.room_id, lock=True)
+        nights = _validate_booking_data(
+            room,
+            booking.guests_count,
+            booking.check_in,
+            booking.check_out,
+        )
 
         if not _check_room_availability(
             db, booking.room_id, booking.check_in, booking.check_out, exclude_booking_id=booking.id
@@ -340,7 +354,7 @@ def update_booking(
             nights=nights,
             guests=booking.guests_count,
             season=booking.season,
-            extra_service=update_data.get("extra_service") or getattr(booking, "extra_service", None),
+            extra_service=booking.extra_service,
         )
 
     db.commit()

@@ -227,6 +227,22 @@ def test_update_booking(client):
     assert data["guest_email"] == payload["guest_email"]
 
 
+def test_update_booking_remove_extra_service(client):
+    room_resp = client.post("/rooms", json=VALID_ROOM)
+    room_id = room_resp.json()["id"]
+
+    payload = _booking_payload(room_id, extra_service="breakfast")
+    create_resp = client.post("/bookings", json=payload)
+    booking_id = create_resp.json()["id"]
+    previous_total = create_resp.json()["total_price"]
+
+    response = client.put(f"/bookings/{booking_id}", json={"extra_service": None})
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["extra_service"] is None
+    assert data["total_price"] < previous_total
+
+
 def test_update_booking_not_found(client):
     response = client.put("/bookings/9999", json={"guest_name": "Nobody"})
     assert response.status_code == status.HTTP_404_NOT_FOUND
